@@ -9,6 +9,8 @@
 #   WORKSHOP_COLLECTION=123456789 bash deploy.sh     # 隐藏血条等 Mod
 # ============================================================
 set -euo pipefail
+# 任何未捕获失败都打印行号与命令，避免"静默退出"
+trap 'printf "\033[1;31m[x]\033[0m 失败: 第 %s 行 -> %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 # ---------------- 可调参数（环境变量可覆盖） ----------------
 INSTALL_DIR="${INSTALL_DIR:-/opt/l4d2}"
@@ -34,7 +36,11 @@ die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 # shellcheck disable=SC1091
 . /etc/os-release
 log "系统: ${PRETTY_NAME:-unknown}"
-[ -z "$RCON_PASSWORD" ] && RCON_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 12)"
+if [ -z "$RCON_PASSWORD" ]; then
+  # 用 dd|od|tr|cut 组合：不产生 SIGPIPE，pipefail 下安全
+  RCON_PASSWORD="$(dd if=/dev/urandom bs=24 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n' | cut -c1-12)"
+  [ -n "$RCON_PASSWORD" ] || RCON_PASSWORD="l4d2$(date +%s)"
+fi
 
 # ---------------- 1. 依赖 ----------------
 install_deps() {
@@ -197,7 +203,7 @@ UNIT
 
 # ---------------- 6. 本机防火墙 ----------------
 open_ports() {
-  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep "Status: active" >/dev/null; then
     log "ufw 放行 $SRCDS_PORT tcp/udp"
     ufw allow "$SRCDS_PORT"/tcp  >/dev/null
     ufw allow "$SRCDS_PORT"/udp  >/dev/null
