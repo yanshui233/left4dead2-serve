@@ -1,0 +1,15 @@
+# 本地敏感配置（真实 IP / 密码 / 密钥绝对不要提交）
+client/config.ps1
+*.pem
+*.ppk
+*.key
+
+# 部署产物
+/out/
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
