@@ -116,6 +116,15 @@ config_mirror() {
   fi
   [ -n "$mirrors" ] || mirrors="\"https://docker.1panel.live\""
 
+  # 幂等：已配好就别重启 docker，否则会打断正在进行的镜像下载
+  if [ -f /etc/docker/daemon.json ] \
+     && grep -q 'registry-mirrors' /etc/docker/daemon.json \
+     && grep -q 'max-concurrent-downloads' /etc/docker/daemon.json \
+     && { [ -z "$MIRROR" ] || grep -q "$MIRROR" /etc/docker/daemon.json; }; then
+    log "镜像加速已配置，跳过（不重启 docker，避免打断正在进行的下载）"
+    return 0
+  fi
+
   log "配置 Docker 镜像加速: $mirrors"
   mkdir -p /etc/docker
   cat > /etc/docker/daemon.json <<JSON
