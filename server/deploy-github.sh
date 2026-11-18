@@ -107,14 +107,39 @@ compose_up() {
 }
 
 # ---------------------------------------------------------------- 2. 镜像加速
+pick_mirror() {
+  # 竞速选源：谁能在 6 秒内给出 manifest（200/401 都算活），就选谁
+  local cands="docker.1panel.live docker.1ms.run docker.m.daocloud.io hub.rat.dev"
+  local best="" best_ms=9999999 c r code t ms
+  for c in $cands; do
+    r="$(curl -s -o /dev/null -w '%{http_code} %{time_total}' -m 6 \
+        -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+        "https://$c/v2/$IMAGE/manifests/latest" 2>/dev/null || echo '000 9')"
+    code="${r%% *}"; t="${r##* }"
+    case "$code" in
+      200|401)
+        ms="$(awk "BEGIN{printf \"%d\", $t*1000}" 2>/dev/null || echo 9999)"
+        log "  候选 $c  http=$code  响应 ${ms}ms"
+        if [ "$ms" -lt "$best_ms" ]; then best="$c"; best_ms="$ms"; fi
+        ;;
+      *) log "  候选 $c  http=$code  跳过" ;;
+    esac
+  done
+  if [ -n "$best" ]; then
+    PICKED_MIRROR="$best"
+    log "自动选源结果: $PICKED_MIRROR（${best_ms}ms）"
+  else
+    PICKED_MIRROR="docker.1panel.live"
+    warn "没有候选站响应，回落默认 $PICKED_MIRROR"
+  fi
+}
+
 config_mirror() {
   local mirrors=""
   if [ -n "$MIRROR" ]; then mirrors="\"$MIRROR\""; fi
-  if [ -n "$PULLER" ]; then
-    if [ -n "$mirrors" ]; then mirrors="$mirrors, \"https://$PULLER\""
-    else mirrors="\"https://$PULLER\""; fi
-  fi
-  [ -n "$mirrors" ] || mirrors="\"https://docker.1panel.live\""
+  local auto="https://${PICKED_MIRROR:-docker.1panel.live}"
+  if [ -n "$mirrors" ]; then mirrors="$mirrors, \"$auto\""; else mirrors="\"$auto\""; fi
+  if [ -n "$PULLER" ]; then mirrors="$mirrors, \"https://$PULLER\""; fi
 
   # 幂等：已配好就别重启 docker，否则会打断正在进行的镜像下载
   if [ -f /etc/docker/daemon.json ] \
@@ -293,6 +318,7 @@ fetch_addons() {
 # ---------------------------------------------------------------- 主流程
 main() {
   install_docker
+  pick_mirror
   config_mirror
   write_compose
   pull_image
