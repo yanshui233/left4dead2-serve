@@ -48,6 +48,7 @@ $files = @(
     '.gitignore',
     'README.md',
     'server/deploy.sh',
+    'server/deploy-github.sh',
     'server/uninstall.sh',
     'client/up.ps1',
     'client/down.ps1',
